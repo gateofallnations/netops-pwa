@@ -42,13 +42,14 @@ async function verifyPassword(password, stored) {
   if (!stored || !stored.startsWith('pbkdf2$')) return stored === password;
   const [, algo, iterations, saltHex, hashHex] = stored.split('$');
   if (!algo || !iterations || !saltHex || !hashHex) return false;
+  if (Number(iterations) > 100000) return false; // Workers محدودیت ۱۰۰هزار تکرار دارد
   const bits = await derive(password, saltHex, Number(iterations), algo === 'sha256' ? 'SHA-256' : 'SHA-1');
   return bytesToHex(bits) === hashHex.toLowerCase();
 }
 async function hashPassword(password) {
   const salt = randomHex(16);
-  const bits = await derive(password, salt, 120000, 'SHA-256');
-  return `pbkdf2$sha256$120000$${salt}$${bytesToHex(bits)}`;
+  const bits = await derive(password, salt, 100000, 'SHA-256');
+  return `pbkdf2$sha256$100000$${salt}$${bytesToHex(bits)}`;
 }
 
 async function readCollection(env, name) {
@@ -103,7 +104,15 @@ export default {
         const password = String(body.password || '');
         const users = (await readCollection(env, 'users')).items || [];
         const user = users.find(u => String(u.username || '').trim().toLowerCase() === username);
-        if (!user || !password || !(await verifyPassword(password, user.passwordHash))) {
+        if (!user || !password) {
+          return json({ ok: false, error: 'Invalid username or password' }, 401, { 'Cache-Control': 'no-store' });
+        }
+        const stored = String(user.passwordHash || '');
+        const parts = stored.split('$');
+        if (parts[0] === 'pbkdf2' && Number(parts[2]) > 100000) {
+          return json({ ok: false, error: 'Sign in once in the Android app to upgrade your password hash.' }, 401, { 'Cache-Control': 'no-store' });
+        }
+        if (!(await verifyPassword(password, stored))) {
           return json({ ok: false, error: 'Invalid username or password' }, 401, { 'Cache-Control': 'no-store' });
         }
         await appendAudit(env, user.username, 'login', 'app', 'web');
@@ -135,6 +144,23 @@ export default {
         target.passwordHash = await hashPassword(nextPassword);
         await writeCollection(env, 'users', data);
         await appendAudit(env, actor.username, 'password_changed', target.username, 'by_creator_web');
+        return json({ ok: true });
+      }
+
+      if (path === '/password/self' && request.method === 'POST') {
+        const body = await readBody(request);
+        const username = String(body.username || '').trim().toLowerCase();
+        const oldPassword = String(body.oldPassword || '');
+        const nextPassword = String(body.newPassword || '');
+        if (nextPassword.length < 6) return json({ error: 'Password too short' }, 400);
+        const data = await readCollection(env, 'users');
+        const target = (data.items || []).find(u => String(u.username || '').toLowerCase() === username);
+        if (!target || !(await verifyPassword(oldPassword, target.passwordHash || ''))) {
+          return json({ error: 'Current password is incorrect' }, 401);
+        }
+        target.passwordHash = await hashPassword(nextPassword);
+        await writeCollection(env, 'users', data);
+        await appendAudit(env, username, 'password_changed', username, 'self_web');
         return json({ ok: true });
       }
 

@@ -436,6 +436,8 @@ function settingsView() {
     </div>
     <div class="glass card">
       <h2>${t('نسخه و دادهها', 'Version & data')}</h2>
+      <button class="btn ghost" data-act="selfpass">🔑 ${t('تغییر پسورد من', 'Change my password')}</button>
+      <div class="hr"></div>
       ${state.user?.role === 'CREATOR' ? `<button class="btn" data-act="openusers">👤 ${t('مدیریت کاربران و لاگها', 'Users & audit log')}</button><div class="hr"></div>` : ''}
       <div class="muted">${t('نسخهی ابری', 'Cloud release')}: ${esc(state.release?.versionName || '—')} • ${esc(state.release?.notes || '')}</div>
       <div class="muted">${t('آخرین دریافت', 'Last sync')}: ${ago(JSON.parse(localStorage.getItem('netops.data') || '{}').ts)}</div>
@@ -651,6 +653,21 @@ document.addEventListener('click', async e => {
       localStorage.setItem('netops.sound', '1'); beep('success'); render(); break;
     case 'soundoff':
       localStorage.setItem('netops.sound', '0'); render(); break;
+    case 'selfpass': {
+      const oldPassword = prompt(t('رمز فعلی خود را وارد کنید', 'Enter your current password'));
+      if (!oldPassword) return;
+      const next = prompt(t('رمز جدید (حداقل ۶ کاراکتر)', 'New password (at least 6 chars)'));
+      if (!next || next.length < 6) { toast(t('رمز جدید کوتاه است', 'Password too short')); return; }
+      try {
+        const res = await api('/password/self', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: state.user.username, oldPassword, newPassword: next })
+        });
+        toast(res.ok ? t('رمز تغییر کرد', 'Password changed') : (res.error || 'Error'));
+        beep(res.ok ? 'success' : 'error');
+      } catch (ex) { toast(ex.message); }
+      break;
+    }
     case 'userpass': {
       const next = prompt(t('رمز جدید برای ' + id, 'New password for ' + id));
       if (!next || next.length < 6) { toast(t('رمز جدید باید حداقل ۶ کاراکتر باشد', 'At least 6 characters')); return; }
