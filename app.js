@@ -1,7 +1,7 @@
 /* NetOps Hub PWA — single-file app logic */
 const API = 'https://netops-pwa-api.gate-of-all-nations-2580.workers.dev';
 const COLLECTIONS = ['servers', 'phone', 'ips', 'vcenters', 'rahkaran', 'cheats',
-  'tickets', 'ticket_comments', 'ticket_activity', 'sla_policies', 'users'];
+  'tickets', 'ticket_comments', 'ticket_activity', 'sla_policies', 'users', 'audit_log'];
 
 const $app = document.getElementById('app');
 const $toast = document.getElementById('toast');
@@ -22,8 +22,31 @@ const state = {
   favorites: new Set(JSON.parse(localStorage.getItem('netops.favorites') || '[]')),
   notes: JSON.parse(localStorage.getItem('netops.notes') || '[]'),
   release: null,
-  online: navigator.onLine
+  online: navigator.onLine,
+  userModal: false,
+  userTab: 0
 };
+
+let audioCtx = null;
+function beep(kind = 'click') {
+  try {
+    if (localStorage.getItem('netops.sound') === '0') return;
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const now = audioCtx.currentTime;
+    const notes = kind === 'success' ? [660, 990] : kind === 'error' ? [180] : [1200];
+    notes.forEach((freq, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, now + i * 0.09);
+      gain.gain.exponentialRampToValueAtTime(0.08, now + i * 0.09 + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.09 + 0.11);
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start(now + i * 0.09); osc.stop(now + i * 0.09 + 0.12);
+    });
+  } catch (e) { /* audio blocked until first gesture */ }
+}
 
 const PALETTES = [
   ['cyan', 'سایبر', 'Cyan'], ['purple', 'بنفش', 'Purple'],
@@ -175,7 +198,7 @@ function appView() {
     phonebook: phoneView, academy: academyView, helpdesk: helpdeskView,
     favorites: favoritesView, search: searchView, settings: settingsView
   }[screen] || dashboardView)();
-  $app.innerHTML = `<div class="app">${head}${content}${footer()}</div>${navBar()}${state.article ? articleModal() : ''}${state.ticket ? ticketModal() : ''}`;
+  $app.innerHTML = `<div class="app">${head}${content}${footer()}</div>${navBar()}${state.article ? articleModal() : ''}${state.ticket ? ticketModal() : ''}${usersModal()}`;
 }
 function footer() {
   return `<div class="footer">${t('سازنده: کوروش محسنی (Kourosh Mohseni)', 'Created by Kourosh Mohseni')}</div>`;
@@ -404,12 +427,16 @@ function settingsView() {
       <div class="row"><span class="muted">${t('زبان', 'Language')}</span>
         <button class="chip ${state.lang === 'fa' ? 'active' : ''}" data-act="lang" data-id="fa">فارسی</button>
         <button class="chip ${state.lang === 'en' ? 'active' : ''}" data-act="lang" data-id="en">English</button></div>
+      <div class="row"><span class="muted">${t('جلوههای صوتی', 'Sound effects')}</span>
+        <button class="chip ${localStorage.getItem('netops.sound') !== '0' ? 'active' : ''}" data-act="sound">${t('روشن', 'On')}</button>
+        <button class="chip ${localStorage.getItem('netops.sound') === '0' ? 'active' : ''}" data-act="soundoff">${t('خاموش', 'Off')}</button></div>
       <div class="hr"></div>
       <div class="row"><span class="muted">${t('شفافیت شیشه', 'Glass opacity')} ${Math.round(state.glass * 100)}%</span></div>
       <input type="range" min="10" max="95" value="${Math.round(state.glass * 100)}" data-input="glass" style="width:100%">
     </div>
     <div class="glass card">
       <h2>${t('نسخه و دادهها', 'Version & data')}</h2>
+      ${state.user?.role === 'CREATOR' ? `<button class="btn" data-act="openusers">👤 ${t('مدیریت کاربران و لاگها', 'Users & audit log')}</button><div class="hr"></div>` : ''}
       <div class="muted">${t('نسخهی ابری', 'Cloud release')}: ${esc(state.release?.versionName || '—')} • ${esc(state.release?.notes || '')}</div>
       <div class="muted">${t('آخرین دریافت', 'Last sync')}: ${ago(JSON.parse(localStorage.getItem('netops.data') || '{}').ts)}</div>
       <div class="row wrap" style="margin-top:10px">
@@ -466,6 +493,39 @@ function ticketModal() {
       <div class="hr"></div><h3>${t('تاریخچه', 'Activity')}</h3>
       ${activity.slice(-12).map(a => `<div class="row" style="font-size:11px;padding:3px 0"><span class="primary">${esc(a.action)}</span>
         <span class="muted">${esc(a.fromValue || '')} ${a.toValue ? '→ ' + esc(a.toValue) : ''}</span><span class="spacer"></span><span class="dim">${ago(a.createdAt)}</span></div>`).join('') || empty(t('رویدادی نیست', 'No activity'))}
+    </div></div>`;
+}
+
+/* ---------------------------------------------------------------- users */
+function usersModal() {
+  if (!state.userModal || state.user?.role !== 'CREATOR') return '';
+  const users = (state.data.users || []).filter(u => u.username !== 'kourosh');
+  const logs = (state.data.audit_log || []).slice(0, 200);
+  return `<div class="modal-back" data-act="closeusers">
+    <div class="modal" data-stop="1">
+      <div class="modal-head"><button class="icon-btn" data-act="closeusers">✕</button>
+        <h2>${t('مدیریت کاربران و لاگها', 'Users & audit log')}</h2></div>
+      <div class="chips">
+        <button class="chip ${state.userTab === 0 ? 'active' : ''}" data-act="usertab" data-id="0">${t('کاربران', 'Users')}</button>
+        <button class="chip ${state.userTab === 1 ? 'active' : ''}" data-act="usertab" data-id="1">${t('لاگ تغییرات', 'Audit log')}</button>
+      </div>
+      ${state.userTab === 0 ? `
+        <div class="glass card"><div class="muted">${t('برای تغییر رمز یا حذف کاربر، ابتدا رمز Creator را وارد کنید.', 'Enter the Creator password before changing or deleting a user.')}</div>
+          <input class="field" data-input="actorPass" type="password" value="${esc(state.q.actorPass || '')}" placeholder="${t('رمز Creator', 'Creator password')}">
+        </div>
+        ${users.map((u, i) => `<div class="list-item" style="--i:${i}">
+          <div class="avatar">👤</div><div class="col" style="flex:1">
+            <span class="item-title">${esc(u.fullName || u.username)}</span>
+            <span class="item-sub">@${esc(u.username)} • ${esc(u.role)}</span></div>
+          <button class="chip" data-act="userpass" data-id="${esc(u.username)}">${t('پسورد', 'Password')}</button>
+          <button class="chip" data-act="userdelete" data-id="${esc(u.username)}">${t('حذف', 'Delete')}</button>
+        </div>`).join('') || empty(t('کاربر دیگری نیست', 'No other users'))}` : `
+        <div class="muted">${t('آخرین ۲۰۰ تغییر — کی، چه کاری و چه زمانی', 'Last 200 changes — who did what and when')}</div>
+        ${logs.map((l, i) => `<div class="list-item" style="--i:${i}">
+          <div class="avatar">✓</div><div class="col" style="flex:1">
+            <span class="item-title">${esc(l.action)}</span>
+            <span class="item-sub">${esc(l.actorId)} • ${esc(l.target || '')} ${l.detail ? '• ' + esc(l.detail) : ''}</span></div>
+          <span class="dim">${ago(l.createdAt)}</span></div>`).join('') || empty(t('لاگی وجود ندارد', 'No audit entries'))}`}
     </div></div>`;
 }
 
@@ -528,6 +588,7 @@ document.addEventListener('click', async e => {
   if (!el) return;
   const act = el.dataset.act;
   const id = el.dataset.id;
+  beep(act === 'logout' || act === 'delnote' ? 'error' : 'click');
 
   if (act === 'closemodal' && e.target.closest('[data-stop]')) return;
   if (act === 'closeticket' && e.target.closest('[data-stop]')) return;
@@ -579,6 +640,44 @@ document.addEventListener('click', async e => {
       toast(t('کش پاک شد', 'Cache cleared')); break;
     case 'logout':
       state.user = null; sessionStorage.removeItem('netops.user'); render(); break;
+    case 'openusers':
+      state.userModal = true; state.userTab = 0; render(); break;
+    case 'closeusers':
+      if (e.target.closest('[data-stop]')) return;
+      state.userModal = false; render(); break;
+    case 'usertab':
+      state.userTab = +id; render(); break;
+    case 'sound':
+      localStorage.setItem('netops.sound', '1'); beep('success'); render(); break;
+    case 'soundoff':
+      localStorage.setItem('netops.sound', '0'); render(); break;
+    case 'userpass': {
+      const next = prompt(t('رمز جدید برای ' + id, 'New password for ' + id));
+      if (!next || next.length < 6) { toast(t('رمز جدید باید حداقل ۶ کاراکتر باشد', 'At least 6 characters')); return; }
+      try {
+        const res = await api('/password', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ actor: state.user.username, actorPassword: state.q.actorPass || '', username: id, newPassword: next })
+        });
+        toast(res.ok ? t('رمز تغییر کرد', 'Password changed') : (res.error || 'Error'));
+        beep(res.ok ? 'success' : 'error');
+        loadData();
+      } catch (ex) { toast(ex.message); }
+      break;
+    }
+    case 'userdelete': {
+      if (!confirm(t('آیا «' + id + '» حذف شود؟', 'Delete ' + id + '?'))) return;
+      try {
+        const res = await api('/user/delete', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ actor: state.user.username, actorPassword: state.q.actorPass || '', username: id })
+        });
+        toast(res.ok ? t('کاربر حذف شد', 'User deleted') : (res.error || 'Error'));
+        beep(res.ok ? 'success' : 'error');
+        loadData();
+      } catch (ex) { toast(ex.message); }
+      break;
+    }
     case 'addnote':
       if ((state.q.note || '').trim()) {
         state.notes.unshift({ id: Date.now().toString(), text: state.q.note.trim(), createdAt: Date.now() });
