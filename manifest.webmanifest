@@ -1,0 +1,16 @@
+{
+  "name": "NetOps Hub",
+  "short_name": "NetOps",
+  "description": "Network Operations & Academy Platform",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#060B14",
+  "theme_color": "#060B14",
+  "lang": "fa",
+  "dir": "rtl",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
