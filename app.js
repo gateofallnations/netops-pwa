@@ -188,17 +188,32 @@ function loginView() {
 /* ---------------------------------------------------------------- shells */
 function appView() {
   const screen = state.screen;
-  const head = screen === 'dashboard' ? '' : `
-    <div class="screen-head">
-      <h1>${screenTitle(screen)}</h1>
-      <button class="icon-btn" data-act="go" data-id="dashboard" title="${t('داشبورد', 'Home')}">⌂</button>
-    </div>`;
+  const head = screen === 'dashboard' ? '' : apkHeader(screen);
   const content = ({
     dashboard: dashboardView, servers: serversView, inventory: inventoryView,
     phonebook: phoneView, academy: academyView, helpdesk: helpdeskView,
-    favorites: favoritesView, search: searchView, settings: settingsView
+    favorites: favoritesView, search: searchView, settings: settingsView, tools: toolsView, users: usersView
   }[screen] || dashboardView)();
-  $app.innerHTML = `<div class="app">${head}${content}${footer()}</div>${navBar()}${state.article ? articleModal() : ''}${state.ticket ? ticketModal() : ''}${usersModal()}`;
+  $app.innerHTML = `<div class="app">${head}${content}${footer()}</div>${state.article ? articleModal() : ''}${state.ticket ? ticketModal() : ''}${usersModal()}`;
+}
+
+function apkHeader(screen) {
+  const subtitles = {
+    servers: t('زیرساخت و سرورها', 'Infrastructure & servers'),
+    inventory: t('اطلاعات شرکت', 'Company information'),
+    phonebook: t('دفتر تلفن', 'Phone directory'),
+    academy: t(' Network+ • CCNA • CCNP', 'Network+ • CCNA • CCNP'),
+    helpdesk: t('عیبیابی • تیکت • دانشنامه', 'Diagnostics • tickets • knowledge'),
+    favorites: t('یادداشت و دسترسی سریع', 'Saved notes and quick access'),
+    search: t('سرورها • سایتها • مقالات • مخاطبین', 'Servers • sites • guides • contacts'),
+    settings: t('شخصیسازی • صدا • امنیت', 'Customization • sound • security'),
+    tools: t('ماشینحسابهایnetwork', 'Network calculators')
+  };
+  return `<div class="apk-header">
+    <button class="home-btn" data-act="go" data-id="dashboard" title="${t('داشبورد', 'Home')}">⌂</button>
+    <div class="titles"><h1>${screenTitle(screen)}</h1><div class="subtitle">${subtitles[screen] || ''}</div></div>
+    ${screen === 'settings' ? '' : `<button class="act" data-act="go" data-id="settings" title="${t('تنظیمات', 'Settings')}">⚙</button>`}
+  </div>`;
 }
 function footer() {
   return `<div class="footer">${t('سازنده: کوروش محسنی (Kourosh Mohseni)', 'Created by Kourosh Mohseni')}</div>`;
@@ -208,7 +223,9 @@ function screenTitle(s) {
     servers: t('سرورها و زیرساخت', 'Servers'), inventory: t('اطلاعات شرکت', 'Company'),
     phonebook: t('دفتر تلفن', 'Phone Directory'), academy: t('آکادمی شبکه', 'Academy'),
     helpdesk: t('هلپدسک', 'Helpdesk'), favorites: t('علاقهمندیها', 'Favorites'),
-    search: t('جستجو', 'Search'), settings: t('تنظیمات', 'Settings')
+    search: t('جستجو', 'Search'), settings: t('تنظیمات', 'Settings'),
+    tools: t('ابزارهای مهندسی', 'Engineering tools'),
+    users: t('مدیریت کاربران', 'Users')
   })[s] || t('داشبورد', 'Dashboard');
 }
 function navBar() {
@@ -225,38 +242,64 @@ function empty(msg) { return `<div class="empty">${esc(msg)}</div>`; }
 /* ---------------------------------------------------------------- screens */
 function dashboardView() {
   const d = state.data;
-  const servers = d.servers || [], tickets = d.tickets || [], phone = d.phone || [];
+  const servers = d.servers || [], sites = [...new Set(servers.map(x => x.site).filter(Boolean))];
+  const companies = d.rahkaran || [], cheats = (d.cheats || []).concat(state.refs);
+  const tickets = d.tickets || [];
   const open = tickets.filter(x => !['resolved', 'closed'].includes(x.status)).length;
-  const breached = tickets.filter(x => slaOf(x).cls === 'bad').length;
-  const links = [
-    ['servers', '▣', t('سرورها', 'Servers'), num(servers.length)],
-    ['inventory', '▦', t('موجودی IP', 'IP inventory'), num((d.ips || []).length)],
-    ['phonebook', '☎', t('دفتر تلفن', 'Phonebook'), num(phone.length)],
-    ['academy', '◈', t('آکادمی و مرجع', 'Academy'), num((d.cheats || []).length + state.refs.length)],
-    ['helpdesk', '◉', t('تیکتها و گزارش', 'Tickets'), num(open)],
-    ['search', '⌕', t('جستجوی سراسری', 'Search'), ''],
-    ['favorites', '★', t('علاقهمندیها', 'Favorites'), num(state.favorites.size)],
-    ['settings', '⚙', t('تنظیمات', 'Settings'), '']
+
+  const features = [
+    ['inventory', '▦', t('اطلاعات شرکت', 'Company Information'),
+      t('زیرساخت، سرورها، سایت‌ها، vCenter و Rahkaran ERP', 'Infrastructure, Servers, Sites, vCenter and Rahkaran ERP'),
+      [`Servers (${servers.length})`, `${t('سایت‌ها', 'Sites')} (${sites.length})`, 'vCenter', `Rahkaran ERP (${companies.length})`]],
+    ['academy', '◈', t('آکادمی شبکه', 'Network Academy'),
+      t('نقشههای امنیتی، اینفوگرافیکها، Network+، CCNA، CCNP و راهنماها', 'Cyber maps, infographics, Network+, CCNA, CCNP and guides'),
+      [t('نقشههای سایبری', 'Visual Cyber Maps'), 'URL Anatomy', 'Hashing/Encoding']],
+    ['helpdesk', '◉', t('هلپدسک عیبیابی', 'Troubleshooting Helpdesk'),
+      t('عیبیابی تعاملی NOC، فلوچارت، تریاژ حادثه و رفع سریع', 'Interactive NOC diagnostics, triage and quick resolution'),
+      ['NOC Incident Triage', 'LAN Packet Loss', `Tickets (${open})`]],
+    ['tools', '⌘', t('ابزارهای مهندسی', 'Engineering Tools'),
+      t('ماشینحساب سابنت، VLSM، پهنای باند و MAC', 'Subnet, VLSM, bandwidth and MAC calculators'),
+      ['Subnet Calculator', 'Bandwidth', 'MAC address']],
+    ['phonebook', '☎', t('دفتر تلفن', 'Phone Directory'),
+      t('.internal و موبایل شعب و شرکتها', 'Internal and mobile contacts of branches'),
+      [t('نام و نام خانوادگی', 'Full Name'), t('شماره موبایل', 'Mobile'), t('شماره داخلی', 'Extension')]]
   ];
+
   return `
-    <div class="screen-head"><h1>NetOps Hub</h1><span class="badge">${t('آنلاین', 'Online')}</span></div>
-    <div class="glass card">
-      <div class="row"><div class="avatar">${esc((state.user?.fullName || 'N')[0])}</div>
-        <div class="col"><strong>${esc(state.user?.fullName || '')}</strong>
-          <span class="muted">@${esc(state.user?.username || '')} • ${esc(state.user?.role || '')}</span></div></div>
+    <div class="hero">
+      <div class="hero-top">
+        <div class="hero-icon">◈</div>
+        <div style="flex:1"><h1>NetOps Hub</h1><div class="tagline">${t('سامانه جامع مدیریت زیرساخت، سرورها و دانشنامه مهندسی', 'Network Operations & Academy Platform')}</div></div>
+        <button class="apk-header-act" data-act="go" data-id="settings" style="font-size:20px;background:none;border:none;color:var(--muted)">⚙</button>
+      </div>
+      <span class="badge">${t('NOC TELEMETRY ONLINE', 'NOC TELEMETRY ONLINE')}</span>
     </div>
+
+    <div class="quick-chips chips">
+      <button class="chip" data-act="go" data-id="users">${t('کاربران', 'Users')}</button>
+      <button class="chip" data-act="go" data-id="phonebook">${t('دفتر تلفن', 'Phonebook')}</button>
+      <button class="chip" data-act="go" data-id="favorites">${t('علاقهمندیها', 'Favorites')}</button>
+      <button class="chip" data-act="go" data-id="search">${t('جستجو', 'Search')}</button>
+    </div>
+
     <div class="kpis">
       <div class="glass kpi"><strong class="primary">${num(servers.length)}</strong><span>${t('سرور', 'Servers')}</span></div>
-      <div class="glass kpi"><strong class="warn">${num(open)}</strong><span>${t('تیکت باز', 'Open')}</span></div>
-      <div class="glass kpi"><strong class="bad">${num(breached)}</strong><span>${t('نقض SLA', 'Breached')}</span></div>
+      <div class="glass kpi"><strong class="primary">${num(sites.length)}</strong><span>${t('سایت', 'Sites')}</span></div>
+      <div class="glass kpi"><strong class="primary">${num(companies.length)}</strong><span>${t('سامانه', 'Systems')}</span></div>
+      <div class="glass kpi"><strong class="primary">${num(cheats.length)}</strong><span>${t('مطلب', 'Guides')}</span></div>
     </div>
-    ${links.map(([id, ic, label, count], i) => `
-      <div class="list-item" style="--i:${i}" data-act="go" data-id="${id}">
-        <div class="avatar">${ic}</div><div class="col" style="flex:1">
-          <span class="item-title">${label}</span><span class="item-sub">${state.refs.length ? t('دستورها، مقالات و مرجع', 'Commands, guides and reference') : ''}</span>
-        </div><span class="tag">${count}</span>
+
+    ${features.map(([id, icon, title, desc, chips], i) => `
+      <div class="glass feature-card" style="--i:${i}" data-act="go" data-id="${id}">
+        <div class="feature-head">
+          <div class="feature-icon">${icon}</div>
+          <div style="flex:1"><div class="feature-title">${title}</div><div class="feature-desc">${desc}</div></div>
+        </div>
+        <div class="feature-chips">${chips.map(c => `<span class="tag">${esc(c)}</span>`).join('')}</div>
+        <div class="explore">${t('کاوش', 'Explore')} ←</div>
       </div>`).join('')}`;
 }
+
 function serversView() {
   const q = state.q.servers || '';
   const items = (state.data.servers || []).filter(x => matches(x, q));
@@ -395,6 +438,57 @@ function favoritesView() {
         <button class="star" data-act="delnote" data-id="${esc(n.id)}">✕</button></div>`).join('') : empty(t('یادداشتی ندارید', 'No notes yet'))}
     </div>`;
 }
+function usersView() {
+  if (state.user?.role !== 'CREATOR' && state.user?.role !== 'ADMIN') {
+    return empty(t('فقط Creator و Admin میتوانند کاربران را مدیریت کنند.', 'Only Creator and Admin can manage users.'));
+  }
+  const users = (state.data.users || []).filter(u => u.username !== 'kourosh');
+  return `<div class="glass card">
+      <h2>👤 ${t('مدیریت کاربران', 'User management')}</h2>
+      <div class="muted">${t('تغییر پسورد و حذف کاربر توسط Creator', 'Password change and deletion by Creator')}</div>
+      <div class="hr"></div>
+      <div class="muted">${t('رمز Creator برای عملیات روی سایر کاربران لازم است.', 'Creator password is required for actions on other users.')}</div>
+      <input class="field" data-input="actorPass" type="password" value="${esc(state.q.actorPass || '')}" placeholder="${t('رمز Creator', 'Creator password')}">
+      <button class="btn" data-act="openusers">${t('مدیریت و لاگها', 'Manage & audit')}</button>
+    </div>
+    ${users.map((u, i) => `<div class="list-item" style="--i:${i}">
+      <div class="avatar">👤</div><div class="col" style="flex:1">
+        <span class="item-title">${esc(u.fullName || u.username)}</span>
+        <span class="item-sub">@${esc(u.username)} • ${esc(u.role)}</span></div>
+      ${state.user?.role === 'CREATOR' ? `<button class="chip" data-act="userpass" data-id="${esc(u.username)}">${t('پسورد', 'Password')}</button>
+      <button class="chip" data-act="userdelete" data-id="${esc(u.username)}">${t('حذف', 'Delete')}</button>` : ''}
+    </div>`).join('')}`;
+}
+
+function toolsView() {
+  const ip = state.q.calcIp || '192.168.1.10';
+  const mask = state.q.calcMask || '24';
+  let result = '';
+  const parts = ip.split('.').map(Number);
+  const bits = parseInt(mask, 10);
+  if (parts.length === 4 && parts.every(n => n >= 0 && n < 256) && bits >= 0 && bits <= 32) {
+    const ipNum = ((parts[0]<<24) >>> 0) + (parts[1]<<16) + (parts[2]<<8) + parts[3];
+    const maskNum = bits === 0 ? 0 : (0xFFFFFFFF << (32 - bits)) >>> 0;
+    const net = (ipNum & maskNum) >>> 0;
+    const hosts = bits >= 31 ? (bits === 31 ? 1 : 1) : Math.pow(2, 32 - bits) - 2;
+    const oct = n => [(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255].join('.');
+    result = `<div class="cmd">Network : ${oct(net)}
+Mask    : ${oct(maskNum)} (/${bits})
+Hosts   : ${num(hosts)}
+Range   : ${oct(net + 1)} – ${oct((net | (~maskNum >>> 0)) - 1)}</div>`;
+  }
+  return `<div class="glass card">
+      <h2>⌘ ${t('ماشینحساب سابنت', 'Subnet calculator')}</h2>
+      <input class="field" data-input="calcIp" value="${esc(ip)}" placeholder="IP">
+      <input class="field" data-input="calcMask" value="${esc(mask)}" placeholder="CIDR /24">
+      ${result || `<div class="muted">${t('IP و ماسک معتبر وارد کنید.', 'Enter a valid IP and mask.')}</div>`}
+    </div>
+    <div class="glass card">
+      <h2>${t('پهنای باند', 'Bandwidth')}</h2>
+      <div class="muted">${t('۱۰۰Mbps ≈ ۱۲.۵MB/s • ۱Gbps ≈ ۱۲۵MB/s', '100Mbps ≈ 12.5MB/s • 1Gbps ≈ 125MB/s')}</div>
+    </div>`;
+}
+
 function searchView() {
   const q = state.q.global || '';
   const groups = [];

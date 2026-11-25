@@ -1,7 +1,7 @@
-const CACHE = 'netops-pwa-v1';
+const CACHE = 'netops-pwa-v2';
 const SHELL = [
   './', './index.html', './styles.css', './app.js',
-  './manifest.webmanifest', './icon.svg', './reference_library.json'
+  './manifest.webmanifest', './icon.svg', './reference_library.json', './wallpaper.jpg'
 ];
 
 self.addEventListener('install', event => {
