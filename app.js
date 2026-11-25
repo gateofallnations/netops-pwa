@@ -96,7 +96,7 @@ function toast(msg) {
 }
 function applyTheme() {
   document.documentElement.dataset.palette = state.palette;
-  document.documentElement.style.setProperty('--glass', String(state.glass));
+  document.documentElement.style.setProperty('--glass-alpha', String(state.glass));
   document.documentElement.lang = state.lang;
   document.documentElement.dir = state.lang === 'fa' ? 'rtl' : 'ltr';
 }
